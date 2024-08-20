@@ -94,6 +94,7 @@ void setup() {
   ac.setFan(kElectraAcFanAuto);
   ac.setMode(kElectraAcCool);
   ac.setTemp(currentTemp);
+  ac.setSwingV(false);
   printState();
 
   // Đọc và khôi phục dữ liệu IR từ Firebase
@@ -149,53 +150,54 @@ void loop() {
 
     irrecv.resume();
   }
-
-  // Kiểm tra trạng thái từ Firebase và thực hiện các lệnh tương ứng
-  for (int i = 0; i < irDataCount; i++) {
-    String assignedKeyPath = "/assignedKeys/" + String(i + 1) + "/status";
-    if (Firebase.getBool(firebaseData, assignedKeyPath)) {
-      bool status = firebaseData.boolData();
-      if (status) {
-        // Lấy tín hiệu IR từ Firebase
-        String irDataPath = "/irData/irData" + String(i);
-        if (Firebase.getString(firebaseData, irDataPath)) {
-          String irSignal = firebaseData.stringData();
-          Serial.println("Tín hiệu IR được lấy từ Firebase: " + irSignal);
+  
+  // Đang thay callback để giảm delay
+  // //Kiểm tra trạng thái từ Firebase và thực hiện các lệnh tương ứng
+  // for (int i = 0; i < irDataCount; i++) {
+  //   String assignedKeyPath = "/assignedKeys/" + String(i + 1) + "/status";
+  //   if (Firebase.getBool(firebaseData, assignedKeyPath)) {
+  //     bool status = firebaseData.boolData();
+  //     if (status) {
+  //       // Lấy tín hiệu IR từ Firebase
+  //       String irDataPath = "/irData/irData" + String(i);
+  //       if (Firebase.getString(firebaseData, irDataPath)) {
+  //         String irSignal = firebaseData.stringData();
+  //         Serial.println("Tín hiệu IR được lấy từ Firebase: " + irSignal);
           
-          // Chuyển đổi chuỗi tín hiệu thô thành mảng uint16_t
-          irSignal.replace("{", "");
-          irSignal.replace("}", "");
-          irSignal.replace(" ", "");
-          irSignal.replace(",", " ");
-          std::vector<uint16_t> rawDataVector;
-          char* token = strtok(const_cast<char*>(irSignal.c_str()), " ");
-          while (token != nullptr) {
-            rawDataVector.push_back(static_cast<uint16_t>(atoi(token)));
-            token = strtok(nullptr, " ");
-          }
-          uint16_t rawData[rawDataVector.size()];
-          for (size_t j = 0; j < rawDataVector.size(); ++j) {
-            rawData[j] = rawDataVector[j];
-          }
+  //         // Chuyển đổi chuỗi tín hiệu thô thành mảng uint16_t
+  //         irSignal.replace("{", "");
+  //         irSignal.replace("}", "");
+  //         irSignal.replace(" ", "");
+  //         irSignal.replace(",", " ");
+  //         std::vector<uint16_t> rawDataVector;
+  //         char* token = strtok(const_cast<char*>(irSignal.c_str()), " ");
+  //         while (token != nullptr) {
+  //           rawDataVector.push_back(static_cast<uint16_t>(atoi(token)));
+  //           token = strtok(nullptr, " ");
+  //         }
+  //         uint16_t rawData[rawDataVector.size()];
+  //         for (size_t j = 0; j < rawDataVector.size(); ++j) {
+  //           rawData[j] = rawDataVector[j];
+  //         }
 
-          // Phát tín hiệu IR
-          irsend.sendRaw(rawData, sizeof(rawData) / sizeof(rawData[0]), 38); 
-          Serial.println("Tín hiệu IR đã được gửi.");
+  //         // Phát tín hiệu IR
+  //         irsend.sendRaw(rawData, sizeof(rawData) / sizeof(rawData[0]), 38); 
+  //         Serial.println("Tín hiệu IR đã được gửi.");
 
-          // Đặt lại trạng thái thành false
-          if (Firebase.setBool(firebaseData, assignedKeyPath, false)) {
-            Serial.println("Trạng thái đã được đặt lại thành false!");
-          } else {
-            Serial.println("Lỗi khi đặt lại trạng thái: " + firebaseData.errorReason());
-          }
-        } else {
-          Serial.println("Lỗi khi lấy dữ liệu IR từ Firebase: " + firebaseData.errorReason());
-        }
-      }
-    } else {
-      Serial.println("Lỗi khi kiểm tra trạng thái: " + firebaseData.errorReason());
-    }
-  }
+  //         // Đặt lại trạng thái thành false
+  //         if (Firebase.setBool(firebaseData, assignedKeyPath, false)) {
+  //           Serial.println("Trạng thái đã được đặt lại thành false!");
+  //         } else {
+  //           Serial.println("Lỗi khi đặt lại trạng thái: " + firebaseData.errorReason());
+  //         }
+  //       } else {
+  //         Serial.println("Lỗi khi lấy dữ liệu IR từ Firebase: " + firebaseData.errorReason());
+  //       }
+  //     }
+  //   } else {
+  //     Serial.println("Lỗi khi kiểm tra trạng thái: " + firebaseData.errorReason());
+  //   }
+  // }
 
   // Đọc trạng thái từ Firebase và thực hiện các lệnh tương ứng
   bool updateRequired = false;
@@ -281,6 +283,22 @@ void loop() {
       }
       updateRequired = true;
       Firebase.setBool(firebaseData, "/button/mode", false);
+    }
+  }
+   if (Firebase.getBool(firebaseData, "/button/swingV")) {
+    if (firebaseData.boolData()) {
+      // Chuyển đổi giữa ON và OFF
+      static bool swingVState = false;  // Lưu trạng thái hiện tại của swingV
+      swingVState = !swingVState;  // Đảo trạng thái
+      if (swingVState) {
+        ac.setSwingV(kElectraAcSwingOn);  // Bật swingV
+        Serial.println("Swing V: ON");
+      } else {
+        ac.setSwingV(kElectraAcSwingOff);  // Tắt swingV
+        Serial.println("Swing V: OFF");
+      }
+      Firebase.setBool(firebaseData, "/button/swingV", false);  // Đặt lại trạng thái thành false
+      updateRequired = true;
     }
   }
 
